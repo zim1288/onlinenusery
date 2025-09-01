@@ -1,0 +1,97 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f4fff4;
+  margin: 0;
+  padding: 0;
+  padding-bottom: 60px; /* Footer height */
+}
+
+header {
+  background: #388e3c;
+  color: white;
+  padding: 1em 0;
+  text-align: center;
+}
+
+nav a {
+  color: white;
+  margin: 0 1em;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+main {
+  max-width: 800px;
+  margin: 2em auto;
+  padding: 2em;
+  background: white;
+  border-radius: 10px;
+}
+
+h2 {
+  color: #388e3c;
+}
+
+section {
+  margin-bottom: 2em;
+}
+
+#plant-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1em;
+}
+
+.plant-item {
+  border: 1px solid #b3c6cf;
+  padding: 1em;
+  border-radius: 8px;
+  width: 200px;
+  background: #e8f5e9;
+  text-align: center;
+  position: relative;
+}
+
+.plant-actions {
+  margin-top: 10px;
+}
+
+.plant-actions button {
+  margin: 0 5px;
+  cursor: pointer;
+  border: 1px solid #388e3c;
+  background: white;
+  color: #388e3c;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.plant-actions button.delete-btn {
+  border-color: #c62828;
+  color: #c62828;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  max-width: 320px;
+}
+
+#order-response,
+#manage-response {
+  margin-top: 1em;
+  color: green;
+  font-weight: bold;
+}
+
+footer {
+  background: #388e3c;
+  color: white;
+  text-align: center;
+  padding: 1em 0;
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+}
