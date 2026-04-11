@@ -56,6 +56,8 @@ if ($method === 'POST') {
             exit;
         }
         $db->categories->deleteOne(['_id' => $oid]);
+        // Remove dangling category reference from all plants in this category
+        $db->plants->updateMany(['category_id' => $oid], ['$unset' => ['category_id' => '']]);
         echo json_encode(['success' => true, 'message' => 'Category deleted.']);
         exit;
     }
