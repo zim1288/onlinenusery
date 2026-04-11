@@ -1,0 +1,27 @@
+# Environment variables (contains sensitive credentials)
+.env
+.env.local
+
+# Composer dependencies
+vendor/
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+error.log
+access.log
+
+# Session files (optional)
+sessions/
+
+# Uploaded files in production (optional)
+# uploads/
