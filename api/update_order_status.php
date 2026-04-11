@@ -8,21 +8,23 @@ if (!isLoggedIn() || !isAdmin()) {
     exit;
 }
 
-$orderId = (int)($_POST['order_id'] ?? 0);
-$status  = $_POST['status'] ?? '';
-$allowed = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+$orderId  = $_POST['order_id'] ?? '';
+$status   = $_POST['status'] ?? '';
+$allowed  = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+$orderOid = toObjectId($orderId);
 
-if ($orderId <= 0 || !in_array($status, $allowed)) {
+if (!$orderOid || !in_array($status, $allowed)) {
     echo json_encode(['success' => false, 'message' => 'Invalid order ID or status.']);
     exit;
 }
 
-$stmt = $conn->prepare("UPDATE orders SET status = ? WHERE id = ?");
-$stmt->bind_param('si', $status, $orderId);
+$result = $db->orders->updateOne(
+    ['_id' => $orderOid],
+    ['$set' => ['status' => $status]]
+);
 
-if ($stmt->execute()) {
+if ($result->getMatchedCount() > 0) {
     echo json_encode(['success' => true, 'message' => 'Order status updated.']);
 } else {
-    echo json_encode(['success' => false, 'message' => 'Failed to update order status.']);
+    echo json_encode(['success' => false, 'message' => 'Order not found.']);
 }
-$stmt->close();

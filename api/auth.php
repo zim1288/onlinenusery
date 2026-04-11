@@ -22,20 +22,16 @@ if ($action === 'login') {
         exit;
     }
 
-    $stmt = $conn->prepare(
-        "SELECT id, username, email, password, role FROM users WHERE username = ? OR email = ? LIMIT 1"
-    );
-    $stmt->bind_param('ss', $identifier, $identifier);
-    $stmt->execute();
-    $user = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+    $user = $db->users->findOne([
+        '$or' => [['username' => $identifier], ['email' => $identifier]],
+    ]);
 
     if (!$user || !password_verify($password, $user['password'])) {
         echo json_encode(['success' => false, 'message' => 'Invalid username/email or password.']);
         exit;
     }
 
-    $_SESSION['user_id']  = $user['id'];
+    $_SESSION['user_id']  = (string) $user['_id'];
     $_SESSION['username'] = $user['username'];
     $_SESSION['role']     = $user['role'];
 
@@ -70,34 +66,29 @@ if ($action === 'register') {
     }
 
     // Check duplicates
-    $stmt = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1");
-    $stmt->bind_param('ss', $username, $email);
-    $stmt->execute();
-    $existing = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
+    $existing = $db->users->findOne([
+        '$or' => [['username' => $username], ['email' => $email]],
+    ]);
     if ($existing) {
         echo json_encode(['success' => false, 'message' => 'Username or email already taken.']);
         exit;
     }
 
     $hashed = password_hash($password, PASSWORD_BCRYPT);
-    $stmt = $conn->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, 'customer')");
-    $stmt->bind_param('sss', $username, $email, $hashed);
+    $result = $db->users->insertOne([
+        'username'   => $username,
+        'email'      => $email,
+        'password'   => $hashed,
+        'role'       => 'customer',
+        'created_at' => new MongoDB\BSON\UTCDateTime(),
+    ]);
 
-    if ($stmt->execute()) {
-        $userId = $stmt->insert_id;
-        $stmt->close();
+    $userId = (string) $result->getInsertedId();
+    $_SESSION['user_id']  = $userId;
+    $_SESSION['username'] = $username;
+    $_SESSION['role']     = 'customer';
 
-        $_SESSION['user_id']  = $userId;
-        $_SESSION['username'] = $username;
-        $_SESSION['role']     = 'customer';
-
-        echo json_encode(['success' => true, 'message' => 'Registration successful.']);
-    } else {
-        $stmt->close();
-        echo json_encode(['success' => false, 'message' => 'Registration failed. Please try again.']);
-    }
+    echo json_encode(['success' => true, 'message' => 'Registration successful.']);
     exit;
 }
 

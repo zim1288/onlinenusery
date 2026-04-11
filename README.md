@@ -1,6 +1,6 @@
 # 🌿 Green Nursery — Online Plant Shop
 
-A full-featured e-commerce web application for buying and selling plants, built with PHP and MySQL.
+A full-featured e-commerce web application for buying and selling plants, built with PHP and MongoDB Atlas.
 
 ## Features
 
@@ -13,8 +13,8 @@ A full-featured e-commerce web application for buying and selling plants, built 
 
 ## Tech Stack
 
-- **Backend:** PHP 8+, MySQLi with prepared statements
-- **Database:** MySQL / MariaDB
+- **Backend:** PHP 8+, `mongodb/mongodb` library
+- **Database:** MongoDB Atlas (cloud) or any MongoDB instance
 - **Frontend:** Vanilla JS, responsive CSS (mobile-friendly, down to 480 px)
 - **Sessions:** PHP native sessions for auth
 
@@ -22,27 +22,43 @@ A full-featured e-commerce web application for buying and selling plants, built 
 
 ### Requirements
 
-- PHP 8+
-- MySQL / MariaDB
+- PHP 8+ with the `ext-mongodb` extension enabled
+- [Composer](https://getcomposer.org/) (for the MongoDB PHP library)
+- A MongoDB Atlas account (free tier works great) or a local MongoDB instance
 - A web server (Apache, Nginx, or PHP built-in server)
 
 ### Setup
 
-1. **Create the database:**
+1. **Install PHP dependencies:**
 
    ```bash
-   mysql -u root -p < database.sql
+   composer install
    ```
 
-2. **Configure the database connection** in `api/db.php` (host, user, password, database).
-
-3. **Serve the project** from your web server's document root, or use the PHP built-in server:
+2. **Set your MongoDB connection string** as an environment variable:
 
    ```bash
-   php -S localhost:8000
+   # Copy the example and fill in your Atlas URI
+   cp .env.example .env
+   # Then export it before starting your server, e.g.:
+   export MONGODB_URI="mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
    ```
 
-4. **Open** `http://localhost:8000` in your browser.
+   You can get the connection string from **MongoDB Atlas → Connect → Drivers (PHP)**.
+
+3. **Seed the database** with sample categories, plants, and an admin user:
+
+   ```bash
+   MONGODB_URI="<your-uri>" php mongo_seed.php
+   ```
+
+4. **Serve the project** from your web server's document root, or use the PHP built-in server:
+
+   ```bash
+   MONGODB_URI="<your-uri>" php -S localhost:8000
+   ```
+
+5. **Open** `http://localhost:8000` in your browser.
 
 ### Default Admin Credentials
 
@@ -58,8 +74,10 @@ A full-featured e-commerce web application for buying and selling plants, built 
 onlinenursery/
 ├── admin/              # Admin panel (dashboard, plants, orders, categories)
 ├── api/                # JSON API endpoints (auth, cart, orders, reviews, plants)
+│   └── db.php          # MongoDB connection + helper functions
 ├── includes/           # Shared PHP helpers (header, footer, auth checks)
 ├── uploads/            # Plant images uploaded via the admin panel
+├── vendor/             # Composer dependencies (mongodb/mongodb)
 ├── index.php           # Plant catalog page
 ├── plant.php           # Plant detail & reviews page
 ├── cart.php            # Shopping cart page
@@ -67,7 +85,9 @@ onlinenursery/
 ├── login.php           # Login page
 ├── register.php        # Registration page
 ├── styles.css          # Global stylesheet
-└── database.sql        # Database schema + seed data
+├── mongo_seed.php      # Database seed script (run once)
+├── composer.json       # PHP dependencies
+└── .env.example        # Environment variable template
 ```
 
 ## License

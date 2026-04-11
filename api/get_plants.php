@@ -3,81 +3,63 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/db.php';
 
 $search     = trim($_GET['search'] ?? '');
-$categoryId = (int)($_GET['category_id'] ?? 0);
+$categoryId = $_GET['category_id'] ?? '';
 $minPrice   = isset($_GET['min_price']) && $_GET['min_price'] !== '' ? (float)$_GET['min_price'] : null;
 $maxPrice   = isset($_GET['max_price']) && $_GET['max_price'] !== '' ? (float)$_GET['max_price'] : null;
 $sort       = $_GET['sort'] ?? 'newest';
 
-$where  = [];
-$params = [];
-$types  = '';
-
+// Build $match filter
+$match = [];
 if ($search !== '') {
-    $where[]  = "(p.name LIKE ? OR p.description LIKE ?)";
-    $like     = "%$search%";
-    $params[] = $like;
-    $params[] = $like;
-    $types   .= 'ss';
+    $match['$or'] = [
+        ['name'        => ['$regex' => $search, '$options' => 'i']],
+        ['description' => ['$regex' => $search, '$options' => 'i']],
+    ];
+}
+if ($categoryId !== '') {
+    $catOid = toObjectId($categoryId);
+    if ($catOid) $match['category_id'] = $catOid;
+}
+if ($minPrice !== null || $maxPrice !== null) {
+    $priceFilter = [];
+    if ($minPrice !== null) $priceFilter['$gte'] = $minPrice;
+    if ($maxPrice !== null) $priceFilter['$lte'] = $maxPrice;
+    $match['price'] = $priceFilter;
 }
 
-if ($categoryId > 0) {
-    $where[]  = "p.category_id = ?";
-    $params[] = $categoryId;
-    $types   .= 'i';
-}
+$sortStage = match($sort) {
+    'price_asc'  => ['price' => 1],
+    'price_desc' => ['price' => -1],
+    'name_asc'   => ['name'  => 1],
+    default      => ['created_at' => -1],
+};
 
-if ($minPrice !== null) {
-    $where[]  = "p.price >= ?";
-    $params[] = $minPrice;
-    $types   .= 'd';
-}
+$pipeline = [
+    ['$match' => empty($match) ? (object)[] : $match],
+    ['$lookup' => [
+        'from'         => 'categories',
+        'localField'   => 'category_id',
+        'foreignField' => '_id',
+        'as'           => 'category',
+    ]],
+    ['$lookup' => [
+        'from'         => 'reviews',
+        'localField'   => '_id',
+        'foreignField' => 'plant_id',
+        'as'           => 'reviews',
+    ]],
+    ['$addFields' => [
+        'category_name' => ['$ifNull' => [['$arrayElemAt' => ['$category.name', 0]], null]],
+        'avg_rating'    => ['$ifNull' => [['$round' => [['$avg' => '$reviews.rating'], 1]], 0.0]],
+        'review_count'  => ['$size' => '$reviews'],
+    ]],
+    ['$project' => [
+        'name' => 1, 'description' => 1, 'price' => 1, 'image' => 1, 'stock' => 1,
+        'category_id' => 1, 'category_name' => 1, 'avg_rating' => 1, 'review_count' => 1,
+        'created_at' => 1,
+    ]],
+    ['$sort' => $sortStage],
+];
 
-if ($maxPrice !== null) {
-    $where[]  = "p.price <= ?";
-    $params[] = $maxPrice;
-    $types   .= 'd';
-}
-
-$whereClause = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
-
-$orderBy = 'p.created_at DESC';
-if ($sort === 'price_asc')  $orderBy = 'p.price ASC';
-if ($sort === 'price_desc') $orderBy = 'p.price DESC';
-if ($sort === 'name_asc')   $orderBy = 'p.name ASC';
-
-$sql = "
-    SELECT
-        p.id,
-        p.name,
-        p.description,
-        p.price,
-        p.image,
-        p.stock,
-        p.category_id,
-        c.name AS category_name,
-        ROUND(COALESCE(AVG(r.rating), 0), 1) AS avg_rating,
-        COUNT(r.id) AS review_count
-    FROM plants p
-    LEFT JOIN categories c ON p.category_id = c.id
-    LEFT JOIN reviews r ON p.id = r.plant_id
-    $whereClause
-    GROUP BY p.id, p.name, p.description, p.price, p.image, p.stock, p.category_id, c.name
-    ORDER BY $orderBy
-";
-
-$stmt = $conn->prepare($sql);
-
-if (!empty($params)) {
-    $stmt->bind_param($types, ...$params);
-}
-
-$stmt->execute();
-$result = $stmt->get_result();
-$plants = [];
-
-while ($row = $result->fetch_assoc()) {
-    $plants[] = $row;
-}
-$stmt->close();
-
+$plants = mongoDocs($db->plants->aggregate($pipeline));
 echo json_encode($plants);
