@@ -11,7 +11,7 @@ if (!isLoggedIn() || !isAdmin()) {
 $name        = trim($_POST['name'] ?? '');
 $description = trim($_POST['description'] ?? '');
 $price       = (float)($_POST['price'] ?? 0);
-$category_id = (int)($_POST['category_id'] ?? 0);
+$category_id = $_POST['category_id'] ?? '';
 $stock       = (int)($_POST['stock'] ?? 0);
 
 if (empty($name) || $price <= 0) {
@@ -35,14 +35,19 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
     }
 }
 
-$stmt = $conn->prepare(
-    "INSERT INTO plants (name, description, price, image, category_id, stock) VALUES (?, ?, ?, ?, ?, ?)"
-);
-$stmt->bind_param('ssdsii', $name, $description, $price, $image, $category_id, $stock);
+$doc = [
+    'name'        => $name,
+    'description' => $description,
+    'price'       => $price,
+    'image'       => $image,
+    'stock'       => $stock,
+    'created_at'  => new MongoDB\BSON\UTCDateTime(),
+];
 
-if ($stmt->execute()) {
-    echo json_encode(['success' => true, 'message' => 'Plant added successfully.', 'id' => $stmt->insert_id]);
-} else {
-    echo json_encode(['success' => false, 'message' => 'Failed to add plant.']);
+$catOid = toObjectId($category_id);
+if ($catOid) {
+    $doc['category_id'] = $catOid;
 }
-$stmt->close();
+
+$result = $db->plants->insertOne($doc);
+echo json_encode(['success' => true, 'message' => 'Plant added successfully.', 'id' => (string) $result->getInsertedId()]);

@@ -9,89 +9,95 @@ if (!isLoggedIn()) {
 }
 
 $action  = $_POST['action'] ?? $_GET['action'] ?? '';
-$userId  = (int)$_SESSION['user_id'];
+$userOid = toObjectId((string) $_SESSION['user_id']);
 
 if ($action === 'add') {
-    $plantId  = (int)($_POST['plant_id'] ?? 0);
+    $plantId  = $_POST['plant_id'] ?? '';
     $quantity = (int)($_POST['quantity'] ?? 1);
-    if ($plantId <= 0 || $quantity < 1) {
+    $plantOid = toObjectId($plantId);
+
+    if (!$plantOid || $quantity < 1) {
         echo json_encode(['success' => false, 'message' => 'Invalid plant or quantity.']);
         exit;
     }
     // Check stock
-    $stmt = $conn->prepare("SELECT stock FROM plants WHERE id = ?");
-    $stmt->bind_param('i', $plantId);
-    $stmt->execute();
-    $plant = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    if (!$plant || $plant['stock'] < 1) {
+    $plant = $db->plants->findOne(['_id' => $plantOid]);
+    if (!$plant || ($plant['stock'] ?? 0) < 1) {
         echo json_encode(['success' => false, 'message' => 'Plant is out of stock.']);
         exit;
     }
-    $stmt = $conn->prepare(
-        "INSERT INTO cart (user_id, plant_id, quantity) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)"
+    $db->cart->updateOne(
+        ['user_id' => $userOid, 'plant_id' => $plantOid],
+        ['$inc' => ['quantity' => $quantity]],
+        ['upsert' => true]
     );
-    $stmt->bind_param('iii', $userId, $plantId, $quantity);
-    $stmt->execute();
-    $stmt->close();
     echo json_encode(['success' => true, 'message' => 'Item added to cart.']);
     exit;
 }
 
 if ($action === 'remove') {
-    $plantId = (int)($_POST['plant_id'] ?? 0);
-    $stmt = $conn->prepare("DELETE FROM cart WHERE user_id = ? AND plant_id = ?");
-    $stmt->bind_param('ii', $userId, $plantId);
-    $stmt->execute();
-    $stmt->close();
+    $plantId  = $_POST['plant_id'] ?? '';
+    $plantOid = toObjectId($plantId);
+    if ($plantOid) {
+        $db->cart->deleteOne(['user_id' => $userOid, 'plant_id' => $plantOid]);
+    }
     echo json_encode(['success' => true, 'message' => 'Item removed from cart.']);
     exit;
 }
 
 if ($action === 'update') {
-    $plantId  = (int)($_POST['plant_id'] ?? 0);
+    $plantId  = $_POST['plant_id'] ?? '';
     $quantity = (int)($_POST['quantity'] ?? 1);
-    if ($quantity < 1) {
-        $stmt = $conn->prepare("DELETE FROM cart WHERE user_id = ? AND plant_id = ?");
-        $stmt->bind_param('ii', $userId, $plantId);
-    } else {
-        $stmt = $conn->prepare("UPDATE cart SET quantity = ? WHERE user_id = ? AND plant_id = ?");
-        $stmt->bind_param('iii', $quantity, $userId, $plantId);
+    $plantOid = toObjectId($plantId);
+    if (!$plantOid) {
+        echo json_encode(['success' => false, 'message' => 'Invalid plant ID.']);
+        exit;
     }
-    $stmt->execute();
-    $stmt->close();
+    if ($quantity < 1) {
+        $db->cart->deleteOne(['user_id' => $userOid, 'plant_id' => $plantOid]);
+    } else {
+        $db->cart->updateOne(
+            ['user_id' => $userOid, 'plant_id' => $plantOid],
+            ['$set' => ['quantity' => $quantity]]
+        );
+    }
     echo json_encode(['success' => true, 'message' => 'Cart updated.']);
     exit;
 }
 
 if ($action === 'get') {
-    $stmt = $conn->prepare("
-        SELECT c.plant_id, c.quantity, p.name, p.price, p.image, p.stock
-        FROM cart c
-        JOIN plants p ON c.plant_id = p.id
-        WHERE c.user_id = ?
-        ORDER BY c.id ASC
-    ");
-    $stmt->bind_param('i', $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $items  = [];
-    $total  = 0;
-    while ($row = $result->fetch_assoc()) {
-        $items[] = $row;
-        $total  += $row['price'] * $row['quantity'];
+    $pipeline = [
+        ['$match' => ['user_id' => $userOid]],
+        ['$lookup' => [
+            'from'         => 'plants',
+            'localField'   => 'plant_id',
+            'foreignField' => '_id',
+            'as'           => 'plant',
+        ]],
+        ['$unwind' => '$plant'],
+        ['$project' => [
+            'plant_id' => 1,
+            'quantity' => 1,
+            'name'     => '$plant.name',
+            'price'    => '$plant.price',
+            'image'    => '$plant.image',
+            'stock'    => '$plant.stock',
+        ]],
+    ];
+
+    $items = [];
+    $total = 0;
+    foreach ($db->cart->aggregate($pipeline) as $doc) {
+        $item    = mongoDoc((array) $doc);
+        $items[] = $item;
+        $total  += $item['price'] * $item['quantity'];
     }
-    $stmt->close();
     echo json_encode(['success' => true, 'items' => $items, 'total' => round($total, 2)]);
     exit;
 }
 
 if ($action === 'clear') {
-    $stmt = $conn->prepare("DELETE FROM cart WHERE user_id = ?");
-    $stmt->bind_param('i', $userId);
-    $stmt->execute();
-    $stmt->close();
+    $db->cart->deleteMany(['user_id' => $userOid]);
     echo json_encode(['success' => true, 'message' => 'Cart cleared.']);
     exit;
 }

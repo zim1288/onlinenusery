@@ -85,7 +85,7 @@ function loadOrders() {
                                 <td>$${parseFloat(o.total_amount).toFixed(2)}</td>
                                 <td>
                                     <span id="status-badge-${o.id}" class="status-badge ${statusColors[o.status] || ''}">${o.status}</span>
-                                    <select class="form-control form-control-sm status-select" onchange="updateStatus(${o.id}, this.value)" title="Change status">
+                                    <select class="form-control form-control-sm status-select" onchange="updateStatus('${o.id}', this.value)" title="Change status">
                                         <option value="">Change status...</option>
                                         <option value="pending">Pending</option>
                                         <option value="processing">Processing</option>

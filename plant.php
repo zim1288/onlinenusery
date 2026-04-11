@@ -2,26 +2,38 @@
 require_once __DIR__ . '/api/db.php';
 require_once __DIR__ . '/includes/auth_check.php';
 
-$id = (int)($_GET['id'] ?? 0);
-if ($id <= 0) {
+$id       = trim($_GET['id'] ?? '');
+$plantOid = toObjectId($id);
+if (!$plantOid) {
     header('Location: /index.php');
     exit;
 }
 
-$stmt = $conn->prepare("
-    SELECT p.*, c.name AS category_name,
-           ROUND(COALESCE(AVG(r.rating), 0), 1) AS avg_rating,
-           COUNT(r.id) AS review_count
-    FROM plants p
-    LEFT JOIN categories c ON p.category_id = c.id
-    LEFT JOIN reviews r ON p.id = r.plant_id
-    WHERE p.id = ?
-    GROUP BY p.id
-");
-$stmt->bind_param('i', $id);
-$stmt->execute();
-$plant = $stmt->get_result()->fetch_assoc();
-$stmt->close();
+$pipeline = [
+    ['$match' => ['_id' => $plantOid]],
+    ['$lookup' => [
+        'from'         => 'categories',
+        'localField'   => 'category_id',
+        'foreignField' => '_id',
+        'as'           => 'category',
+    ]],
+    ['$lookup' => [
+        'from'         => 'reviews',
+        'localField'   => '_id',
+        'foreignField' => 'plant_id',
+        'as'           => 'reviews',
+    ]],
+    ['$addFields' => [
+        'category_name' => ['$ifNull' => [['$arrayElemAt' => ['$category.name', 0]], null]],
+        'avg_rating'    => ['$ifNull' => [['$round' => [['$avg' => '$reviews.rating'], 1]], 0.0]],
+        'review_count'  => ['$size' => '$reviews'],
+    ]],
+    ['$project' => ['category' => 0, 'reviews' => 0]],
+    ['$limit' => 1],
+];
+
+$docs  = mongoDocs($db->plants->aggregate($pipeline));
+$plant = $docs[0] ?? null;
 
 if (!$plant) {
     header('Location: /index.php');
@@ -125,7 +137,7 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <script>
-const plantId = <?= $id ?>;
+const plantId = "<?= htmlspecialchars($id) ?>";
 const maxStock = <?= $plant['stock'] ?>;
 
 function changeQty(delta) {

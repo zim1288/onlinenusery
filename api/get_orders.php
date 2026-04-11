@@ -8,45 +8,21 @@ if (!isLoggedIn()) {
     exit;
 }
 
-$userId = (int)$_SESSION['user_id'];
+$userOid    = toObjectId((string) $_SESSION['user_id']);
+$matchStage = isAdmin() ? (object)[] : ['user_id' => $userOid];
 
-if (isAdmin()) {
-    $stmt = $conn->prepare("
-        SELECT o.id, o.total_amount, o.status, o.created_at,
-               u.username
-        FROM orders o
-        LEFT JOIN users u ON o.user_id = u.id
-        ORDER BY o.created_at DESC
-    ");
-    $stmt->execute();
-} else {
-    $stmt = $conn->prepare("
-        SELECT o.id, o.total_amount, o.status, o.created_at,
-               u.username
-        FROM orders o
-        LEFT JOIN users u ON o.user_id = u.id
-        WHERE o.user_id = ?
-        ORDER BY o.created_at DESC
-    ");
-    $stmt->bind_param('i', $userId);
-    $stmt->execute();
-}
+$pipeline = [
+    ['$match' => $matchStage],
+    ['$lookup' => [
+        'from'         => 'users',
+        'localField'   => 'user_id',
+        'foreignField' => '_id',
+        'as'           => 'user',
+    ]],
+    ['$addFields' => ['username' => ['$arrayElemAt' => ['$user.username', 0]]]],
+    ['$project'   => ['user' => 0]],
+    ['$sort'      => ['created_at' => -1]],
+];
 
-$orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
-
-// Attach order items
-foreach ($orders as &$order) {
-    $stmt = $conn->prepare("
-        SELECT oi.quantity, oi.price, p.name AS plant_name, p.image
-        FROM order_items oi
-        LEFT JOIN plants p ON oi.plant_id = p.id
-        WHERE oi.order_id = ?
-    ");
-    $stmt->bind_param('i', $order['id']);
-    $stmt->execute();
-    $order['items'] = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-}
-
+$orders = mongoDocs($db->orders->aggregate($pipeline));
 echo json_encode($orders);

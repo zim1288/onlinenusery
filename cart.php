@@ -58,14 +58,14 @@ function loadCart() {
                     </td>
                     <td class="cart-qty-cell">
                         <div class="quantity-controls">
-                            <button class="qty-btn" onclick="updateQty(${item.plant_id}, ${item.quantity - 1}, ${item.stock})">−</button>
+                            <button class="qty-btn" onclick="updateQty('${item.plant_id}', ${item.quantity - 1}, ${item.stock})">−</button>
                             <span class="qty-display">${item.quantity}</span>
-                            <button class="qty-btn" onclick="updateQty(${item.plant_id}, ${item.quantity + 1}, ${item.stock})">+</button>
+                            <button class="qty-btn" onclick="updateQty('${item.plant_id}', ${item.quantity + 1}, ${item.stock})">+</button>
                         </div>
                     </td>
                     <td class="cart-subtotal">$${(parseFloat(item.price) * item.quantity).toFixed(2)}</td>
                     <td>
-                        <button class="btn btn-danger btn-sm" onclick="removeItem(${item.plant_id})">🗑 Remove</button>
+                        <button class="btn btn-danger btn-sm" onclick="removeItem('${item.plant_id}')">🗑 Remove</button>
                     </td>
                 </tr>
             `).join('');

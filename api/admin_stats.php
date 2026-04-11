@@ -10,33 +10,35 @@ if (!isLoggedIn() || !isAdmin()) {
 
 $stats = [];
 
-// Counts
-$row = $conn->query("SELECT COUNT(*) as cnt FROM plants")->fetch_assoc();
-$stats['total_plants'] = (int)$row['cnt'];
+$stats['total_plants'] = $db->plants->countDocuments();
+$stats['total_orders'] = $db->orders->countDocuments();
+$stats['total_users']  = $db->users->countDocuments(['role' => 'customer']);
 
-$row = $conn->query("SELECT COUNT(*) as cnt FROM orders")->fetch_assoc();
-$stats['total_orders'] = (int)$row['cnt'];
-
-$row = $conn->query("SELECT COUNT(*) as cnt FROM users WHERE role = 'customer'")->fetch_assoc();
-$stats['total_users'] = (int)$row['cnt'];
-
-$row = $conn->query("SELECT COALESCE(SUM(total_amount), 0) as revenue FROM orders WHERE status != 'cancelled'")->fetch_assoc();
-$stats['total_revenue'] = round((float)$row['revenue'], 2);
+// Total revenue (excluding cancelled orders)
+$revResult = $db->orders->aggregate([
+    ['$match' => ['status' => ['$ne' => 'cancelled']]],
+    ['$group' => ['_id' => null, 'revenue' => ['$sum' => '$total_amount']]],
+])->toArray();
+$stats['total_revenue'] = round($revResult[0]['revenue'] ?? 0, 2);
 
 // Recent 5 orders
-$result = $conn->query("
-    SELECT o.id, o.total_amount, o.status, o.created_at, u.username
-    FROM orders o
-    LEFT JOIN users u ON o.user_id = u.id
-    ORDER BY o.created_at DESC
-    LIMIT 5
-");
-$stats['recent_orders'] = $result->fetch_all(MYSQLI_ASSOC);
+$pipeline = [
+    ['$lookup' => [
+        'from'         => 'users',
+        'localField'   => 'user_id',
+        'foreignField' => '_id',
+        'as'           => 'user',
+    ]],
+    ['$addFields' => ['username' => ['$arrayElemAt' => ['$user.username', 0]]]],
+    ['$project'   => ['user' => 0, 'items' => 0]],
+    ['$sort'      => ['created_at' => -1]],
+    ['$limit'     => 5],
+];
+$stats['recent_orders'] = mongoDocs($db->orders->aggregate($pipeline));
 
 // Low stock plants (stock < 5)
-$result = $conn->query("
-    SELECT id, name, stock, price FROM plants WHERE stock < 5 ORDER BY stock ASC
-");
-$stats['low_stock'] = $result->fetch_all(MYSQLI_ASSOC);
+$stats['low_stock'] = mongoDocs(
+    $db->plants->find(['stock' => ['$lt' => 5]], ['sort' => ['stock' => 1]])
+);
 
 echo json_encode($stats);

@@ -8,19 +8,24 @@ if (!isLoggedIn()) {
     exit;
 }
 
-$userId = (int)$_SESSION['user_id'];
+$userOid = toObjectId((string) $_SESSION['user_id']);
 
-// Get cart items
-$stmt = $conn->prepare("
-    SELECT c.plant_id, c.quantity, p.price, p.stock, p.name
-    FROM cart c
-    JOIN plants p ON c.plant_id = p.id
-    WHERE c.user_id = ?
-");
-$stmt->bind_param('i', $userId);
-$stmt->execute();
-$cartItems = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+// Get cart items with plant details via aggregation
+$pipeline = [
+    ['$match' => ['user_id' => $userOid]],
+    ['$lookup' => [
+        'from'         => 'plants',
+        'localField'   => 'plant_id',
+        'foreignField' => '_id',
+        'as'           => 'plant',
+    ]],
+    ['$unwind' => '$plant'],
+];
+
+$cartItems = [];
+foreach ($db->cart->aggregate($pipeline) as $doc) {
+    $cartItems[] = (array) $doc;
+}
 
 if (empty($cartItems)) {
     echo json_encode(['success' => false, 'message' => 'Your cart is empty.']);
@@ -29,45 +34,44 @@ if (empty($cartItems)) {
 
 // Validate stock
 foreach ($cartItems as $item) {
-    if ($item['quantity'] > $item['stock']) {
-        echo json_encode(['success' => false, 'message' => "Insufficient stock for {$item['name']}."]);
+    $plant = (array) $item['plant'];
+    if ($item['quantity'] > ($plant['stock'] ?? 0)) {
+        echo json_encode(['success' => false, 'message' => "Insufficient stock for {$plant['name']}."]);
         exit;
     }
 }
 
-$total = array_sum(array_map(fn($i) => $i['price'] * $i['quantity'], $cartItems));
+$total = array_sum(array_map(fn($i) => ((array) $i['plant'])['price'] * $i['quantity'], $cartItems));
 
-$conn->begin_transaction();
+$orderItems = array_map(fn($i) => [
+    'plant_id'   => $i['plant_id'],
+    'plant_name' => ((array) $i['plant'])['name'],
+    'quantity'   => $i['quantity'],
+    'price'      => ((array) $i['plant'])['price'],
+], $cartItems);
+
 try {
-    // Create order
-    $stmt = $conn->prepare("INSERT INTO orders (user_id, total_amount, status) VALUES (?, ?, 'pending')");
-    $stmt->bind_param('id', $userId, $total);
-    $stmt->execute();
-    $orderId = $stmt->insert_id;
-    $stmt->close();
+    $result  = $db->orders->insertOne([
+        'user_id'      => $userOid,
+        'total_amount' => round($total, 2),
+        'status'       => 'pending',
+        'items'        => $orderItems,
+        'created_at'   => new MongoDB\BSON\UTCDateTime(),
+    ]);
+    $orderId = (string) $result->getInsertedId();
 
-    // Insert order items and update stock
-    $stmtItem  = $conn->prepare("INSERT INTO order_items (order_id, plant_id, quantity, price) VALUES (?, ?, ?, ?)");
-    $stmtStock = $conn->prepare("UPDATE plants SET stock = stock - ? WHERE id = ?");
-
+    // Decrement stock for each plant
     foreach ($cartItems as $item) {
-        $stmtItem->bind_param('iiid', $orderId, $item['plant_id'], $item['quantity'], $item['price']);
-        $stmtItem->execute();
-        $stmtStock->bind_param('ii', $item['quantity'], $item['plant_id']);
-        $stmtStock->execute();
+        $db->plants->updateOne(
+            ['_id' => $item['plant_id']],
+            ['$inc' => ['stock' => -$item['quantity']]]
+        );
     }
-    $stmtItem->close();
-    $stmtStock->close();
 
     // Clear cart
-    $stmt = $conn->prepare("DELETE FROM cart WHERE user_id = ?");
-    $stmt->bind_param('i', $userId);
-    $stmt->execute();
-    $stmt->close();
+    $db->cart->deleteMany(['user_id' => $userOid]);
 
-    $conn->commit();
     echo json_encode(['success' => true, 'message' => 'Order placed successfully.', 'order_id' => $orderId]);
 } catch (Exception $e) {
-    $conn->rollback();
     echo json_encode(['success' => false, 'message' => 'Failed to place order. Please try again.']);
 }

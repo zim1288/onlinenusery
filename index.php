@@ -140,7 +140,7 @@ function loadPlants() {
                         </div>
                         <div class="card-rating">${renderStars(p.avg_rating)}</div>
                         <div class="card-actions">
-                            <button class="btn btn-primary btn-sm" onclick="addToCart(${p.id}, ${p.stock})" ${p.stock < 1 ? 'disabled' : ''}>
+                            <button class="btn btn-primary btn-sm" onclick="addToCart('${p.id}', ${p.stock})" ${p.stock < 1 ? 'disabled' : ''}>
                                 🛒 Add to Cart
                             </button>
                             <a href="/plant.php?id=${p.id}" class="btn btn-secondary btn-sm">View Details</a>

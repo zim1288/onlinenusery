@@ -120,7 +120,7 @@ function loadPlants() {
                                 <td>★ ${p.avg_rating}</td>
                                 <td class="actions-cell">
                                     <button class="btn btn-sm btn-secondary" onclick='editPlant(${JSON.stringify(p)})'>Edit</button>
-                                    <button class="btn btn-sm btn-danger" onclick="deletePlant(${p.id}, '${escHtml(p.name)}')">Delete</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deletePlant('${p.id}', '${escHtml(p.name)}')">Delete</button>
                                 </td>
                             </tr>
                         `).join('')}
