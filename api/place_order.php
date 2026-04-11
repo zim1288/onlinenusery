@@ -50,35 +50,71 @@ $orderItems = array_map(fn($i) => [
     'price'      => ((array) $i['plant'])['price'],
 ], $cartItems);
 
-$session = $client->startSession();
-$session->startTransaction();
+// Detect whether the server supports multi-document transactions (requires a
+// replica set or sharded cluster). On a standalone server the serverStatus
+// command returns repl.setName only when running as part of a replica set.
+$supportsTransactions = false;
 try {
-    $result  = $db->orders->insertOne([
-        'user_id'      => $userOid,
-        'total_amount' => round($total, 2),
-        'status'       => 'pending',
-        'items'        => $orderItems,
-        'created_at'   => new MongoDB\BSON\UTCDateTime(),
-    ], ['session' => $session]);
-    $orderId = (string) $result->getInsertedId();
-
-    // Decrement stock for each plant
-    foreach ($cartItems as $item) {
-        $db->plants->updateOne(
-            ['_id' => $item['plant_id']],
-            ['$inc' => ['stock' => -$item['quantity']]],
-            ['session' => $session]
-        );
-    }
-
-    // Clear cart
-    $db->cart->deleteMany(['user_id' => $userOid], ['session' => $session]);
-
-    $session->commitTransaction();
-    echo json_encode(['success' => true, 'message' => 'Order placed successfully.', 'order_id' => $orderId]);
+    $serverInfo = $db->command(['hello' => 1])->toArray()[0] ?? [];
+    $supportsTransactions = !empty($serverInfo['setName']) || (($serverInfo['msg'] ?? '') === 'isdbgrid');
 } catch (Exception $e) {
-    $session->abortTransaction();
-    echo json_encode(['success' => false, 'message' => 'Failed to place order. Please try again.']);
-} finally {
-    $session->endSession();
+    // If we cannot determine, assume no transaction support
+}
+
+if ($supportsTransactions) {
+    $session = $client->startSession();
+    $session->startTransaction();
+    try {
+        $result  = $db->orders->insertOne([
+            'user_id'      => $userOid,
+            'total_amount' => round($total, 2),
+            'status'       => 'pending',
+            'items'        => $orderItems,
+            'created_at'   => new MongoDB\BSON\UTCDateTime(),
+        ], ['session' => $session]);
+        $orderId = (string) $result->getInsertedId();
+
+        foreach ($cartItems as $item) {
+            $db->plants->updateOne(
+                ['_id' => $item['plant_id']],
+                ['$inc' => ['stock' => -$item['quantity']]],
+                ['session' => $session]
+            );
+        }
+
+        $db->cart->deleteMany(['user_id' => $userOid], ['session' => $session]);
+
+        $session->commitTransaction();
+        echo json_encode(['success' => true, 'message' => 'Order placed successfully.', 'order_id' => $orderId]);
+    } catch (Exception $e) {
+        $session->abortTransaction();
+        echo json_encode(['success' => false, 'message' => 'Failed to place order. Please try again.']);
+    } finally {
+        $session->endSession();
+    }
+} else {
+    // Fallback for standalone MongoDB (no transaction support)
+    try {
+        $result  = $db->orders->insertOne([
+            'user_id'      => $userOid,
+            'total_amount' => round($total, 2),
+            'status'       => 'pending',
+            'items'        => $orderItems,
+            'created_at'   => new MongoDB\BSON\UTCDateTime(),
+        ]);
+        $orderId = (string) $result->getInsertedId();
+
+        foreach ($cartItems as $item) {
+            $db->plants->updateOne(
+                ['_id' => $item['plant_id']],
+                ['$inc' => ['stock' => -$item['quantity']]]
+            );
+        }
+
+        $db->cart->deleteMany(['user_id' => $userOid]);
+
+        echo json_encode(['success' => true, 'message' => 'Order placed successfully.', 'order_id' => $orderId]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Failed to place order. Please try again.']);
+    }
 }

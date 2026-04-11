@@ -9,7 +9,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 if ($action === 'logout') {
     session_destroy();
-    header('Location: /index.php');
+    echo json_encode(['success' => true, 'message' => 'Logged out successfully.']);
     exit;
 }
 

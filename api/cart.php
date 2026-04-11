@@ -26,6 +26,13 @@ if ($action === 'add') {
         echo json_encode(['success' => false, 'message' => 'Plant is out of stock.']);
         exit;
     }
+    // Enforce stock cap: current cart quantity + requested must not exceed available stock
+    $existing = $db->cart->findOne(['user_id' => $userOid, 'plant_id' => $plantOid]);
+    $currentQty = (int)($existing['quantity'] ?? 0);
+    if ($currentQty + $quantity > ($plant['stock'] ?? 0)) {
+        echo json_encode(['success' => false, 'message' => 'Cannot add more than available stock.']);
+        exit;
+    }
     $db->cart->updateOne(
         ['user_id' => $userOid, 'plant_id' => $plantOid],
         ['$inc' => ['quantity' => $quantity]],

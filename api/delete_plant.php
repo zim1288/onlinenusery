@@ -23,6 +23,10 @@ if (!$plant) {
 
 $db->plants->deleteOne(['_id' => $oid]);
 
+// Remove orphaned reviews and cart entries that reference this plant
+$db->reviews->deleteMany(['plant_id' => $oid]);
+$db->cart->deleteMany(['plant_id' => $oid]);
+
 if (isset($plant['image']) && $plant['image'] !== 'default.jpg') {
     @unlink(__DIR__ . '/../uploads/' . $plant['image']);
 }

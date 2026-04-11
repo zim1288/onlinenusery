@@ -11,6 +11,23 @@
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+// Load .env file if present (simple key=value parser, no external dependency needed)
+$envFile = __DIR__ . '/.env';
+if (file_exists($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        if (strpos(trim($line), '#') === 0) continue;   // skip comment-only lines
+        if (strpos($line, '=') === false) continue;      // skip malformed lines
+        [$key, $value] = explode('=', $line, 2);
+        $key   = trim($key);
+        // Strip inline comments (e.g. KEY=value # note)
+        $value = trim(explode(' #', $value, 2)[0]);
+        if (!getenv($key)) {                             // don't overwrite real env vars
+            putenv("$key=$value");
+        }
+    }
+    echo "Loaded .env file.\n";
+}
+
 $mongoUri = getenv('MONGODB_URI') ?: 'mongodb://localhost:27017';
 $mongoDb  = getenv('MONGODB_DB')  ?: 'nursery';
 
@@ -32,6 +49,8 @@ $db->users->createIndex(['username' => 1], ['unique' => true]);
 $db->users->createIndex(['email' => 1],    ['unique' => true]);
 $db->cart->createIndex(['user_id' => 1, 'plant_id' => 1], ['unique' => true]);
 $db->reviews->createIndex(['user_id' => 1, 'plant_id' => 1], ['unique' => true]);
+$db->plants->createIndex(['category_id' => 1]);
+$db->plants->createIndex(['name' => 1]);
 echo "Indexes created.\n";
 
 // Seed admin user (password: 'password')
